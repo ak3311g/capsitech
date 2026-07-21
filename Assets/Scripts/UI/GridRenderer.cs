@@ -50,7 +50,7 @@ public class GridRenderer : MonoBehaviour
         }
     }
 
-    void UpdatePlayerPosition()
+    public void UpdatePlayerPosition()
     {
         for (int i = 0; i < _engine.Players.Count; i++)
         {
@@ -80,7 +80,7 @@ public class GridRenderer : MonoBehaviour
                         text.text = "";
                         tile.GetComponent<SpriteRenderer>().color = new Color(0.2f, 0.2f, 0.2f);
                         break;
-                    
+
                     case TileType.Wall:
                         text.text = "■";
                         tile.GetComponent<SpriteRenderer>().color = Color.black;
@@ -102,7 +102,7 @@ public class GridRenderer : MonoBehaviour
                         break;
                 }
 
-                _tileObjects[i,j] = tile;
+                _tileObjects[i, j] = tile;
             }
         }
 
@@ -129,4 +129,15 @@ public class GridRenderer : MonoBehaviour
             UpdateUI();
         }
     }
+
+    public void SetEngine(GridEngine newEngine)
+    {
+        _engine = newEngine;
+    }
+
+    public GridEngine GetEngine()
+    {
+        return _engine;
+    }
+
 }
