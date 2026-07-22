@@ -5,7 +5,7 @@ using UnityEngine;
 
 public class GameManager : MonoBehaviour
 {
-    public enum GameState{Playing, PlayerTurn, EnemyTurn, Win, Lose};
+    public enum GameState { Playing, PlayerTurn, EnemyTurn, Win, Lose };
     public static GameManager Instance { get; private set; }
 
     [Header("References")]
@@ -28,7 +28,7 @@ public class GameManager : MonoBehaviour
 
     void Awake()
     {
-        if(Instance == null) Instance = this;
+        if (Instance == null) Instance = this;
         else Destroy(gameObject);
     }
     // Start is called before the first frame update
@@ -36,8 +36,8 @@ public class GameManager : MonoBehaviour
     {
         _undoStack = new Stack<GridEngine>();
 
-        if(gridRenderer == null)
-        gridRenderer = FindObjectOfType<GridRenderer>();
+        if (gridRenderer == null)
+            gridRenderer = FindObjectOfType<GridRenderer>();
 
         _engine = gridRenderer.GetEngine();
         _currentState = GameState.PlayerTurn;
@@ -90,24 +90,24 @@ public class GameManager : MonoBehaviour
     {
         var current = _engine.GetCurrentPlayer();
         Debug.Log($"Player {current.ID} WINS! Reached the center!");
-        
+
         if (winPanel != null)
             winPanel.SetActive(true);
-        
+
         UpdateStatusText($"Player {current.ID} WINS! 🎉");
     }
 
     void OnGameLose(string reason)
     {
         Debug.Log($"Game Over: {reason}");
-        
+
         if (losePanel != null)
             losePanel.SetActive(true);
-        
+
         UpdateStatusText($"Game Over! {reason}");
     }
 
-     void UpdateStatusText(string message)
+    void UpdateStatusText(string message)
     {
         if (statusText != null)
             statusText.text = message;
@@ -169,7 +169,7 @@ public class GameManager : MonoBehaviour
                 return;
             }
 
-            if(current.bankedSteps <= 0)
+            if (current.bankedSteps <= 0)
             {
                 UpdateStatusText($"Player {current.ID} used all steps! Ending turn.");
                 StartCoroutine(DelayedEndTurn(1f));
@@ -199,7 +199,7 @@ public class GameManager : MonoBehaviour
 
     public void EndTurn()
     {
-        if(_currentState != GameState.PlayerTurn)
+        if (_currentState != GameState.PlayerTurn)
         {
             return;
         }
@@ -218,21 +218,24 @@ public class GameManager : MonoBehaviour
 
     IEnumerator EnemyTurnRoutine()
     {
+        Debug.Log("[EnemyTurn] START");
         _isEnemyTurn = true;
         var enemies = new List<EnemyData>(_engine.Enemies);
-        foreach(var enemy in enemies)
+        Debug.Log($"[EnemyTurn] {enemies.Count} enemies to process");
+
+        foreach (var enemy in enemies)
         {
-            if(!_engine.Enemies.Contains(enemy)) continue;
+            if (!_engine.Enemies.Contains(enemy)) continue;
 
-            int steps = Random.Range(1,5);
-            Direction dir = (Direction)Random.Range(0,4);
+            int steps = Random.Range(1, 5);
+            Direction dir = (Direction)Random.Range(0, 4);
+            Debug.Log($"[EnemyTurn] enemy at {enemy.position} will take {steps} steps {dir}");
 
-            for(int i = 0; i < steps; i++)
+            for (int i = 0; i < steps; i++)
             {
-                if(!_engine.Enemies.Contains(enemy)) break;
+                if (!_engine.Enemies.Contains(enemy)) break;
 
                 SaveStateForUndo();
-
                 MoveEnemyOneStep(enemy, dir);
 
                 gridRenderer.RenderGrid();
@@ -240,19 +243,22 @@ public class GameManager : MonoBehaviour
                 gridRenderer.UpdateUI();
 
                 CheckEnemyPlayerCollision(enemy);
+                Debug.Log($"[EnemyTurn] step {i + 1}/{steps} done for enemy");
                 yield return new WaitForSeconds(0.3f);
             }
         }
 
+        Debug.Log("[EnemyTurn] all enemies processed, switching to player");
         _isEnemyTurn = false;
         _engine.SwitchToNextPlayer();
         _currentState = GameState.PlayerTurn;
 
         var current = _engine.GetCurrentPlayer();
+        Debug.Log($"[EnemyTurn] current player after switch: {(current == null ? "NULL" : current.ID.ToString())}, alive={(current?.IsAlive.ToString() ?? "n/a")}");
+
         if (current != null)
         {
             UpdateStatusText($"Player {current.ID}'s Turn! Roll the die.");
-            Debug.Log($"Turn switched to Player {current.ID}");
         }
         else
         {
@@ -261,6 +267,7 @@ public class GameManager : MonoBehaviour
         }
 
         gridRenderer.UpdateUI();
+        Debug.Log("[EnemyTurn] END");
     }
 
     void MoveEnemyOneStep(EnemyData enemy, Direction dir)
@@ -273,7 +280,7 @@ public class GameManager : MonoBehaviour
             case Direction.Left: target.x -= 1; break;
             case Direction.Right: target.x += 1; break;
         }
-        
+
         if (target.x < 0 || target.x >= gridSize || target.y < 0 || target.y >= gridSize) return;
 
         if (_engine.Grid[target.x, target.y] == TileType.Wall) return;
@@ -290,7 +297,7 @@ public class GameManager : MonoBehaviour
                 return;
         }
 
-         _engine.Grid[enemy.position.x, enemy.position.y] = TileType.Empty;
+        _engine.Grid[enemy.position.x, enemy.position.y] = TileType.Empty;
         enemy.position = target;
         _engine.Grid[target.x, target.y] = TileType.Enemy;
     }
@@ -316,7 +323,7 @@ public class GameManager : MonoBehaviour
 
         UpdateStatusText($"COMBAT! Player {player.ID}: {playerPower} vs Enemy: {enemyPower}");
 
-        if(playerPower > enemyPower)
+        if (playerPower > enemyPower)
         {
             _engine.RemoveEnemy(enemy);
             _engine.ForceMovePlayerTo(player, enemy.position);
@@ -324,13 +331,13 @@ public class GameManager : MonoBehaviour
             gridRenderer.RenderGrid();
             gridRenderer.UpdatePlayerPosition();
             gridRenderer.UpdateUI();
-            
+
             UpdateStatusText($"Player {player.ID} destroyed the enemy! 💪");
         }
-        else if(playerPower < enemyPower)
+        else if (playerPower < enemyPower)
         {
             player.health--;
-            
+
             if (player.IsAlive)
             {
                 _engine.ResetPlayerToSpawn(player);
@@ -356,10 +363,10 @@ public class GameManager : MonoBehaviour
     {
         if (_undoStack.Count >= maxUndoSteps)
             _undoStack.Pop(); // Remove oldest if at limit
-        
+
         GridEngine snapshot = _engine.GetSnapShot();
         _undoStack.Push(snapshot);
-        
+
         Debug.Log($"State saved. Undo stack size: {_undoStack.Count}");
     }
 
@@ -371,20 +378,20 @@ public class GameManager : MonoBehaviour
             UpdateStatusText("Nothing to undo!");
             return;
         }
-        
+
         // Restore state
         _engine = _undoStack.Pop();
-        
+
         // Update GridRenderer with new engine
         gridRenderer.SetEngine(_engine);
-        
+
         // Re-render everything
         gridRenderer.RenderGrid();
         gridRenderer.UpdateUI();
-        
+
         // Reset game state
         _currentState = GameState.PlayerTurn;
-        
+
         UpdateStatusText("Undo successful!");
         Debug.Log("Undo successful!");
     }

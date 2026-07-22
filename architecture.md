@@ -1,44 +1,87 @@
-# Unity Grid Game — System Architecture & Code Flow
+# Grid Quest — Turn-Based Grid Survival Game
 
-## 1. System Architecture Map (Current State)
+A turn-based, dice-driven grid game built in Unity. Players bank movement steps from a die roll, navigate a walled grid toward a center goal, and resolve combat encounters with wandering enemies. Includes a rewindable undo system for the last several moves.
 
-This reflects the actual wiring in your scripts today — including the coupling that currently exists between state and rendering.
+---
+
+## Table of Contents
+- [Gameplay Overview](#gameplay-overview)
+- [Project Structure](#project-structure)
+- [System Architecture Map](#system-architecture-map)
+- [Functional Code Flow](#functional-code-flow)
+- [Setup / Running the Project](#setup--running-the-project)
+- [Contributing / Commit Conventions](#contributing--commit-conventions)
+
+---
+
+## Gameplay Overview
+
+1. Roll a die → banked steps increase (capped at `MaxBankedSteps`).
+2. Swipe/drag to spend one banked step per move in a direction.
+3. Reaching an enemy tile triggers a dice-off; the loser is removed (enemy) or sent to spawn / killed (player).
+4. When banked steps hit zero, turn passes to enemies, who each take a short random walk.
+5. Win by reaching the center goal tile. Lose if all players die or the global move budget runs out.
+6. Up to 5 prior states can be undone via a rolling snapshot stack.
+
+---
+
+## Project Structure
+
+```
+Assets/Scripts/
+├── Core/           # Plain C# — no MonoBehaviour, no Unity rendering API calls
+│   ├── GridEngine.cs      # Grid state, movement rules, combat rolls, win/lose checks
+│   ├── PlayerData.cs      # Player stats (position, health, banked steps)
+│   └── EnemyData.cs       # Enemy stats (position, health)
+│
+├── Manager/        # Orchestration — owns turn flow, wires Core to Input/UI
+│   └── GameManager.cs     # Turn state machine, combat resolution, undo stack, win/lose triggers
+│
+├── Input/          # Input capture only — no game-state knowledge beyond reporting direction
+│   └── InputManager.cs    # Swipe/touch/mouse detection → reports Direction
+│
+└── UI/             # Rendering only — reads Core state, never mutates it
+    ├── GridRenderer.cs    # Tile instantiation, HUD text (health/steps/moves)
+    └── PlayerVisual.cs    # Per-player sprite + floating name/HP text
+```
+
+This folder split is the intended separation of concerns: **`Core/` has zero Unity rendering dependencies** — `GridEngine`, `PlayerData`, and `EnemyData` are plain C# classes with no `MonoBehaviour` inheritance, so game rules can be tested or reused without a scene. `Manager/` is the only layer allowed to call into both `Core/` and `UI/`. `Input/` and `UI/` never reference each other directly.
+
+---
+
+## System Architecture Map
+
+Concrete component relationships, showing the state layer (green), orchestration layer (orange), and rendering layer (blue):
 
 ```mermaid
 graph TD
-    subgraph INPUT["Input Layer"]
-        IM[InputManager<br/>MonoBehaviour]
+    subgraph INPUT["Input Layer — Assets/Scripts/Input"]
+        IM[InputManager]
     end
 
-    subgraph ORCH["Orchestration Layer"]
-        GM[GameManager<br/>MonoBehaviour · Singleton]
+    subgraph MANAGER["Orchestration Layer — Assets/Scripts/Manager"]
+        GM[GameManager<br/>Singleton · turn state machine]
     end
 
-    subgraph STATE["Core State Layer (plain C#)"]
-        GE[GridEngine<br/>Grid, Players, Enemies,<br/>movement & combat rules]
+    subgraph CORE["Core State Layer — Assets/Scripts/Core<br/>(plain C#, no Unity rendering deps)"]
+        GE[GridEngine<br/>grid, movement rules,<br/>combat, win/lose]
         PD[PlayerData]
         ED[EnemyData]
     end
 
-    subgraph RENDER["Rendering / View Layer"]
-        GR[GridRenderer<br/>MonoBehaviour]
-        PV[PlayerVisual<br/>MonoBehaviour]
-        UI[TMP Text: health/steps/moves]
-        PANELS[Win/Lose Panels]
+    subgraph UI["Rendering Layer — Assets/Scripts/UI"]
+        GR[GridRenderer]
+        PV[PlayerVisual]
     end
 
-    IM -->|"direct method call<br/>OnPlayerMove(dir)"| GM
-    GM -->|"gridRenderer.GetEngine()<br/>on Start()"| GR
-    GM -->|"mutates via"| GE
+    IM -- "reports Direction" --> GM
+    GM -- "owns & mutates" --> GE
     GE --> PD
     GE --> ED
-    GM -->|"RenderGrid() / UpdatePlayerPosition()<br/>UpdateUI() — called inline"| GR
-    GM -->|"SetEngine() on Undo"| GR
-    GR -->|"owns & instantiates on Awake()"| GE
+    GM -- "triggers redraw after<br/>each state mutation" --> GR
+    GR -- "reads state<br/>(no mutation)" --> GE
     GR --> PV
-    GR --> UI
     PV --> PD
-    GM --> PANELS
 
     style GE fill:#2d5,color:#000
     style PD fill:#2d5,color:#000
@@ -49,38 +92,17 @@ graph TD
     style PV fill:#7ad,color:#000
 ```
 
-### Coupling issues this reveals
-
-1. **State is instantiated by the view.** `GridRenderer.Awake()` does `_engine = new GridEngine(...)` and seeds players/enemies. `GameManager.Start()` then pulls it back out with `gridRenderer.GetEngine()`. The rendering component is currently the *owner* of game state — backwards from a clean architecture where a state/data layer is created independently and handed to both logic and view.
-2. **GameManager directly drives rendering.** Nearly every state-changing method (`OnPlayerMove`, `ResolveCombat`, `EnemyTurnRoutine`, `Undo`) ends with explicit calls like `gridRenderer.RenderGrid()`, `UpdatePlayerPosition()`, `UpdateUI()`. There's no event/observer boundary — `GameManager` has a hard compile-time reference to `GridRenderer` and knows its render API.
-3. **InputManager calls GameManager directly.** `DetectSwipe()` ends with `gameManager.OnPlayerMove(dir)` — a direct MonoBehaviour-to-MonoBehaviour reference rather than an event (`UnityEvent<Direction>` or a C# `Action<Direction>`) that `GameManager` subscribes to. This means `InputManager` cannot be reused or tested without a live `GameManager`.
-4. **Undo re-parents state across the view.** `GameManager.Undo()` pops a `GridEngine` snapshot and calls `gridRenderer.SetEngine(_engine)` — state is being handed *through* the renderer again rather than the renderer simply re-reading from a single shared state owner.
-5. **No interfaces.** `GameManager`, `InputManager`, and `GridRenderer` all reference each other's concrete classes. There's no `IInputSource`, `IGameView`, or `IGameState` seam, so you can't swap rendering (e.g., 3D board vs. 2D board) or input scheme (touch vs. AI-driven testing) without editing `GameManager` itself.
-
-### Target (decoupled) shape
-
-```mermaid
-graph TD
-    IM2[InputManager] -->|"OnSwipe event<br/>Action<Direction>"| GM2[GameManager]
-    GM2 -->|"owns"| GE2[GridEngine]
-    GE2 -->|"OnStateChanged event"| GM2
-    GM2 -->|"OnStateChanged event"| GR2[GridRenderer / PlayerVisual]
-    GR2 -.->|"read-only queries<br/>e.g. Grid, Players"| GE2
-
-    style GE2 fill:#2d5,color:#000
-    style GM2 fill:#e8a,color:#000
-    style IM2 fill:#e8a,color:#000
-    style GR2 fill:#7ad,color:#000
-```
-- `GameManager` (not `GridRenderer`) constructs `GridEngine` and owns the single source of truth.
-- `GridEngine` raises a lightweight event (or `GameManager` raises one after mutating it) that `GridRenderer` subscribes to — rendering never gets an explicit method call telling it *what* changed, just *that* something changed, and reads current state itself.
-- `InputManager` exposes an event; it has no reference to `GameManager` at all.
+**Decoupling rules enforced by this structure:**
+- `Core/` classes never call into `UI/` or `Input/` — they only expose state and pure logic methods (`MovePlayerStep`, `CheckWin`, `RollPowerDie`).
+- `InputManager` never touches `GridEngine` or rendering directly — it only reports a `Direction` upward.
+- `GridRenderer` and `PlayerVisual` only **read** from `GridEngine`/`PlayerData` to draw the current state; all mutation happens exclusively through `GameManager` → `GridEngine`.
+- `GameManager` is the single coordination point — the only class permitted to reference both the state layer and the rendering layer.
 
 ---
 
-## 2. Functional Code Flow — Full Lifecycle
+## Functional Code Flow
 
-Traced through your actual method calls, from swipe to redraw.
+Complete lifecycle from a single user gesture through to the rendered frame:
 
 ```mermaid
 sequenceDiagram
@@ -88,59 +110,54 @@ sequenceDiagram
     participant IM as InputManager
     participant GM as GameManager
     participant GE as GridEngine
-    participant PD as PlayerData
     participant GR as GridRenderer
     participant PV as PlayerVisual
 
-    Player->>IM: Touch/Mouse swipe
-    IM->>IM: DetectSwipe()<br/>compute distance, time, Direction
-    IM->>GM: OnPlayerMove(dir)
+    Player->>IM: Swipe / touch / mouse drag
+    IM->>IM: Detect direction (magnitude + timing check)
+    IM->>GM: OnPlayerMove(Direction)
 
-    GM->>GM: check _currentState == PlayerTurn
-    GM->>GM: current = _engine.GetCurrentPlayer()
-    GM->>PD: check bankedSteps > 0
-    GM->>GM: SaveStateForUndo()<br/>(pushes GridEngine snapshot)
+    GM->>GM: Validate turn state == PlayerTurn
+    GM->>GM: SaveStateForUndo() [snapshot pushed]
+    GM->>GE: MovePlayerStep(player, direction)
+    GE->>GE: Validate bounds / walls / occupancy
+    GE->>GE: Grid Matrix Update:<br/>clear old cell, set new cell
+    GE-->>GM: moved (bool)
 
-    GM->>GE: MovePlayerStep(current, dir)
-    GE->>GE: compute target cell
-    GE->>GE: validate bounds / wall / occupancy
-    GE->>GE: Grid[old] = Empty<br/>Grid[target] = Player
-    GE->>PD: SpendBankedStep()
-    GE->>GE: GlobalMovesRemaining--
-    GE-->>GM: return moved (bool)
-
-    alt moved == true
+    alt move accepted
         GM->>GR: RenderGrid()
-        GR->>GR: destroy & re-instantiate all tiles<br/>from Grid[,]
+        GR->>GR: Rebuild tiles from Grid[,]
         GM->>GR: UpdatePlayerPosition()
-        GR->>PV: UpdateVisual() per player
+        GR->>PV: UpdateVisual()
         GM->>GR: UpdateUI()
-        GR->>GR: refresh health/steps/moves text
-
-        GM->>GE: CheckPlayerEnemyCollision()
-        opt collision found
-            GM->>GM: ResolveCombat(player, enemy)
-            GM->>GE: RollPowerDie() x2, RemoveEnemy / ResetPlayerToSpawn
-            GM->>GR: RenderGrid(), UpdatePlayerPosition(), UpdateUI()
-        end
-
-        GM->>GE: CheckWin()
-        alt win
-            GM->>GM: OnGameWin() → show winPanel
-        else steps <= 0
-            GM->>GM: StartCoroutine(DelayedEndTurn)
-            GM->>GM: EndTurn() → EnemyTurnRoutine()
-        end
-    else moved == false
-        GM->>GM: UpdateStatusText("Move Blocked")
+        GR->>GR: Refresh HP / steps / moves text
+        GM->>GE: Check combat / win conditions
+    else move rejected
+        GM->>GM: Status: "Move Blocked"
     end
 ```
 
-### Where the pipeline breaks the stated ideal
+---
 
-The requested pipeline is **User Gesture → Input Controller → Grid Matrix Update → UI Rendering Framework** — a clean one-directional pipe. In the current code:
+## Setup / Running the Project
 
-- `GameManager` sits *between* input and the grid matrix, which is correct, but it also reaches *past* the grid matrix and calls rendering methods directly (`RenderGrid`, `UpdatePlayerPosition`, `UpdateUI`) after every mutation, rather than the grid matrix update alone triggering a render pass. That means every new state-changing feature you add to `GameManager` (e.g., a new combat rule) requires you to remember to also call the three render methods — nothing enforces that render always follows a state change.
-- `RenderGrid()` fully destroys and re-instantiates every tile on **every** move (`foreach (Transform child in gridContainer) Destroy(...)`), rather than diffing which cells changed. This is a rendering-layer efficiency issue riding on top of the coupling issue: because there's no "what changed" event payload, the renderer has no choice but to redraw everything.
+1. Clone the repository.
+2. Open with Unity (see `ProjectSettings/ProjectVersion.txt` for the exact editor version).
+3. Open the main scene under `Assets/Scenes/`.
+4. Press Play — the grid, player, and enemies are seeded in `GridRenderer.Awake()`.
 
-If you want, I can sketch the concrete C# event/interface refactor (e.g., `IGameState`, an `OnGridChanged` event) that would close this gap without a full rewrite.
+---
+
+## Contributing / Commit Conventions
+
+This repository follows atomic, incrementally-committed history with semantic prefixes:
+
+| Prefix | Use for |
+|---|---|
+| `feat:` | New gameplay features (e.g. `feat: add undo stack`) |
+| `fix:` | Bug fixes (e.g. `fix: player visuals destroyed by tile container overlap`) |
+| `refactor:` | Structural changes with no behavior change |
+| `docs:` | README / documentation updates |
+| `chore:` | Tooling, project settings, non-code changes |
+
+Each commit should represent one logical change — avoid bundling unrelated fixes or large feature drops into a single commit.

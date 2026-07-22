@@ -51,16 +51,18 @@ public class GridRenderer : MonoBehaviour
 
     public void UpdatePlayerPosition()
     {
-        if (_engine.Players.Count != _playerVisuals.Count)
-        {
-            Debug.LogError($"MISMATCH: engine has {_engine.Players.Count} players, " +
-                            $"but only {_playerVisuals.Count} visuals exist!");
-            return;
-        }
         for (int i = 0; i < _engine.Players.Count; i++)
         {
             var player = _engine.Players[i];
             var visual = _playerVisuals[i];
+
+            if (visual == null)
+            {
+                Debug.LogError($"Player visual for Player {player.ID} was destroyed! " +
+                                $"Check if gridContainer overlaps the player visual's parent.");
+                continue;
+            }
+
             visual.transform.position = new Vector3(player.position.x, player.position.y, -1);
             visual.UpdateVisual();
         }
