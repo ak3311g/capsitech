@@ -31,11 +31,9 @@ public class GridRenderer : MonoBehaviour
 
         _engine.AddEnemy(new Vector2Int(5, 5));
         _engine.AddEnemy(new Vector2Int(3, 5));
-    }
-    void Start()
-    {
-        RenderGrid();
+
         SpawnPlayerVisuals();
+        RenderGrid();
         UpdateUI();
     }
 
@@ -53,6 +51,12 @@ public class GridRenderer : MonoBehaviour
 
     public void UpdatePlayerPosition()
     {
+        if (_engine.Players.Count != _playerVisuals.Count)
+        {
+            Debug.LogError($"MISMATCH: engine has {_engine.Players.Count} players, " +
+                            $"but only {_playerVisuals.Count} visuals exist!");
+            return;
+        }
         for (int i = 0; i < _engine.Players.Count; i++)
         {
             var player = _engine.Players[i];
