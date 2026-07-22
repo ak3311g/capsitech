@@ -147,17 +147,4 @@ sequenceDiagram
 4. Press Play — the grid, player, and enemies are seeded in `GridRenderer.Awake()`.
 
 ---
-
-## Contributing / Commit Conventions
-
-This repository follows atomic, incrementally-committed history with semantic prefixes:
-
-| Prefix | Use for |
-|---|---|
-| `feat:` | New gameplay features (e.g. `feat: add undo stack`) |
-| `fix:` | Bug fixes (e.g. `fix: player visuals destroyed by tile container overlap`) |
-| `refactor:` | Structural changes with no behavior change |
-| `docs:` | README / documentation updates |
-| `chore:` | Tooling, project settings, non-code changes |
-
 Each commit should represent one logical change — avoid bundling unrelated fixes or large feature drops into a single commit.
