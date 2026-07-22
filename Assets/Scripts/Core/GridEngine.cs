@@ -32,6 +32,7 @@ public class GridEngine
                     Grid[i, j] = TileType.Wall;
 
         Vector2Int center = new Vector2Int(rows / 2, cols / 2);
+        Debug.Log(center);
         Grid[center.x, center.y] = TileType.CenterGoal;
     }
 

@@ -13,7 +13,6 @@ public class GameManager : MonoBehaviour
 
     [Header("Game Settings")]
     [SerializeField] private int gridSize = 7;
-    [SerializeField] private int maxGlobalMoves=30;
     [SerializeField] private int maxUndoSteps = 5;
 
     [Header("UI")]
@@ -116,6 +115,7 @@ public class GameManager : MonoBehaviour
 
     public void OnRollDice()
     {
+        Debug.Log("Dice rolled");
         if (_currentState != GameState.PlayerTurn)
         {
             Debug.Log("It's not your turn!");
@@ -156,6 +156,7 @@ public class GameManager : MonoBehaviour
 
         if (moved)
         {
+            gridRenderer.RenderGrid();
             gridRenderer.UpdatePlayerPosition();
             gridRenderer.UpdateUI();
 

@@ -20,7 +20,7 @@ public class GridRenderer : MonoBehaviour
     private GameObject[,] _tileObjects;
     private List<PlayerVisual> _playerVisuals = new List<PlayerVisual>();
     // Start is called before the first frame update
-    void Start()
+    void Awake()
     {
         _engine = new GridEngine(7, 7, 30);
         _tileObjects = new GameObject[7, 7];
@@ -29,10 +29,11 @@ public class GridRenderer : MonoBehaviour
 
         _engine.AddPlayer(player1);
 
-        _engine.AddEnemy(new Vector2Int(3, 3));
         _engine.AddEnemy(new Vector2Int(5, 5));
         _engine.AddEnemy(new Vector2Int(3, 5));
-
+    }
+    void Start()
+    {
         RenderGrid();
         SpawnPlayerVisuals();
         UpdateUI();
@@ -72,32 +73,25 @@ public class GridRenderer : MonoBehaviour
                 GameObject tile = Instantiate(tilePrefab, gridContainer);
                 tile.transform.position = new Vector3(i, j, 0);
 
-                TextMeshProUGUI text = tile.GetComponentInChildren<TextMeshProUGUI>();
-
                 switch (_engine.Grid[i, j])
                 {
                     case TileType.Empty:
-                        text.text = "";
                         tile.GetComponent<SpriteRenderer>().color = new Color(0.2f, 0.2f, 0.2f);
                         break;
 
                     case TileType.Wall:
-                        text.text = "■";
                         tile.GetComponent<SpriteRenderer>().color = Color.black;
                         break;
 
                     case TileType.Player:
-                        text.text = "P";
                         tile.GetComponent<SpriteRenderer>().color = Color.blue;
                         break;
 
                     case TileType.Enemy:
-                        text.text = "E";
                         tile.GetComponent<SpriteRenderer>().color = Color.red;
                         break;
 
                     case TileType.CenterGoal:
-                        text.text = "⭐";
                         tile.GetComponent<SpriteRenderer>().color = Color.yellow;
                         break;
                 }
@@ -117,17 +111,6 @@ public class GridRenderer : MonoBehaviour
         healthText.text = $"P{current.ID} HP: {current.health}";
         stepsText.text = $"Steps: {current.bankedSteps}";
         movesText.text = $"Turns Left: {_engine.GlobalMovesRemaining}";
-    }
-
-    public void TestRollDice()
-    {
-        var current = _engine.GetCurrentPlayer();
-        if (current != null)
-        {
-            int roll = _engine.RollPowerDie();
-            current.AddBankedSteps(roll);
-            UpdateUI();
-        }
     }
 
     public void SetEngine(GridEngine newEngine)
